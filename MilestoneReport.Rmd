@@ -1,0 +1,291 @@
+---
+title: 'Milestone Report'
+output: html_document
+---
+
+## Introduction
+
+The objective of the project is to model the prediction function performed by the Swiftkey Keyboard App. The input to the model is n words, and it predicts the next most probable/approriate word. This project shall try to model this prediction function efficiently, and apply data science concepts to the domain of Natural Language Processign.
+
+## Obtaining The Data
+
+The data can be downloaded from :
+
+[https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip]
+
+```{r,echo=TRUE,warning=FALSE,message=FALSE,warning=FALSE,cache=TRUE}
+library(tm)
+library(RWeka)
+library(ggplot2)
+library(stringi)
+library(qdap)
+library(wordcloud)
+
+setwd("~/Cap Project")
+#reading each dataset and sampling 10,000 entries from each
+
+blogs <- readLines("final/en_US/en_US.blogs.txt", encoding="UTF-8")
+blogs <- sample(blogs,10000)
+
+twitter <- readLines("final/en_US/en_US.twitter.txt", encoding="UTF-8")
+twitter <- sample(twitter,10000)
+
+news <- readLines("final/en_US/en_US.news.txt", encoding="UTF-8")
+news <- sample(news,10000)
+
+blogs <- iconv(blogs,from="UTF-8",to="ASCII","")
+twitter <- iconv(twitter,from="UTF-8",to="ASCII","")
+news <- iconv(news,from="UTF-8",to="ASCII","")
+
+```
+
+
+### Summary Statistics 
+
+The data to be used for the project comes from 3 sources: blogs, news and twitter.
+
+| File Name              |              Number Of Lines          |     Size(bytes)  |
+| -------------          |              :-------------:          |      :------:    |
+| en_US.blogs.txt        |                   899288              |         201M     |
+| en_US.news.txt         |                   1010242             |         197M     |
+| en_US.twitter.txt      |                   2360148             |         160M     |
+
+As the size and complexity of the data is huge, the dataset is sampled to be representative of the entire population.
+
+The sample is taken to be 10,000 entries from the twitter file, 5,000 entries from the blogs and news file.
+
+## Data Preprocessing
+
+* The dataset loaded contains one line per entry of tweet,blog,news. These may contain multiple sentences. Hence these word chunks must be split into lines where each line denotes one sentence.
+
+* Data Cleaning Activites : 
+     1. Removing Numbers
+     2. Removing Puntuations
+     3. Removing Foreign characters
+     4. Removing extra white spaces
+     5. Stemming words
+     6. Converting to lower case
+     7. Profanity Filtering
+
+* Finally, storing the processed data in the form of a VCorpus,Plain Text Document and a Term Document Matrix is required for text mining applications.
+
+* Bad Words list - [https://github.com/shutterstock/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words]
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE,cache=TRUE}
+library(qdap)
+library(tm)
+library(stringi)
+sentence_token_annotator <- Maxent_Sent_Token_Annotator(language = "en")
+bounds1 <- annotate(blogs,sentence_token_annotator)
+bounds2 <- annotate(news,sentence_token_annotator)
+blogs <- as.String(blogs)
+blogs <- blogs[bounds1]
+news <- as.String(news)
+news <- news[bounds2]
+data <- character()
+
+data <- append(data,twitter)
+data <- append(data,blogs)
+data <- append(data,news)
+data <- iconv(data,from="UTF-8",to="ASCII","")
+
+corpus <- VCorpus(VectorSource(data),readerControl=list(language="en"))
+corpus <- tm_map(corpus,removeNumbers) # removing numbers
+corpus <- tm_map(corpus, stripWhitespace) # removing whitespaces
+corpus <- tm_map(corpus, content_transformer(tolower)) #lowercasing all contents
+corpus <- tm_map(corpus, removePunctuation) # removing special characters
+toSpace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+corpus <- tm_map(corpus, toSpace, "/|@|\\|")
+
+badwordsvector <- VectorSource(readLines("badwords.txt"))
+corpus <- tm_map(corpus, removeWords,badwordsvector) # removing special character
+corpus <- tm_map(corpus, stripWhitespace) # removing whitespaces
+
+#Converting corpus into df for RWeka function
+cleantext <- as.character(unlist(sapply(corpus,`[`,"content")))
+
+#Removing Elements with 0 words, 1 words
+cleantext <- cleantext[-which(sapply(cleantext,nchar)==0)]
+cleantext <- cleantext[-which(stri_count(cleantext,regex="\\S+")==0)]
+cleantext <- cleantext[-which(stri_count(cleantext,regex="\\S+")==1)]
+````
+
+## Exploratory Analysis
+
+* Things to consider while performing Exploratory Analysis:
+     1. Average Sentence Length (in terms of Words)
+     2. Distribution of Word Frequencies
+     3. Frequencies of 2-grams and 3-grams in the dataset
+     4. No. of unique words needed in a frequency sorted dictionary to cover 50%, 90% of    all word instances in the language
+     
+### 1. Sentence Length 
+
+```{r,echo=FALSE}
+library(stringi)
+summary(stri_count(cleantext,regex="\\S+"))
+
+hist(stri_count(cleantext,regex="\\S+"),breaks=80,col="light blue",xlab="Sentence Length (words)",main="Histogram Of Sentence Length (in Words)")
+```
+
+### 2. Word Frequencies - 15 Most Frequent Words
+
+```{r,echo=FALSE,results=FALSE,warning=FALSE,message=FALSE}
+library(RWeka)
+library(tm)
+#cleantext <- paste("<cs>",cleantext)
+cleantext <- stripWhitespace(cleantext)
+doc <- PlainTextDocument(cleantext)
+sgramtokenizer <- function(x) NGramTokenizer(x,Weka_control(min=1,max=1))
+stermfreqs <- termFreq(doc,control=list(tokenize=sgramtokenizer))
+
+bgramtokenizer <- function(x) NGramTokenizer(x,Weka_control(min=2,max=2))
+btermfreqs <- termFreq(doc,control=list(tokenize=bgramtokenizer))
+
+tgramtokenizer <- function(x) NGramTokenizer(x,Weka_control(min=3,max=3))
+ttermfreqs <- termFreq(doc,control=list(tokenize=tgramtokenizer))
+
+qgramtokenizer <- function(x) NGramTokenizer(x,Weka_control(min=4,max=4))
+qtermfreqs <- termFreq(doc,control=list(tokenize=qgramtokenizer))
+
+utf <- data.frame(stermfreqs)
+names(utf)[1] <- "freq"
+utf$term <- row.names(utf)
+row.names(utf) <- NULL
+utf <- utf[order(utf$freq,decreasing=TRUE),]
+
+btf <- data.frame(btermfreqs)
+names(btf)[1] <- "freq"
+btf$term <- row.names(btf)
+row.names(btf) <- NULL
+btf <- btf[order(btf$freq,decreasing=TRUE),]
+
+ttf <- data.frame(ttermfreqs)
+names(ttf)[1] <- "freq"
+ttf$term <- row.names(ttf)
+row.names(ttf) <- NULL
+ttf <- ttf[order(ttf$freq,decreasing=TRUE),]
+
+qtf <- data.frame(qtermfreqs)
+names(qtf)[1] <- "freq"
+qtf$term <- row.names(qtf)
+row.names(qtf) <- NULL
+qtf <- qtf[order(qtf$freq,decreasing=TRUE),]
+
+btf <- cbind(btf,data.frame(t(sapply(strsplit(btf$term," "),paste))))
+ttf <- cbind(ttf,data.frame(t(sapply(strsplit(ttf$term," "),paste))))
+qtf <- cbind(qtf,data.frame(t(sapply(strsplit(qtf$term," "),paste))))
+
+skipgrams <- unlist(sapply(cleantext,function(x) kSkipNgram(x,n=3,skip=2)),use.names=FALSE,recursive=FALSE)
+sgf <- data.frame(table(skipgrams))
+sgf <- sgf[order(sgf$Freq,decreasing=TRUE),]
+sgf$skipgrams <- as.character(sgf$skipgrams)
+sgf <- cbind(sgf,data.frame(t(sapply(strsplit(sgf$skipgrams," "),paste))))
+names(sgf)[1] <- "term"
+
+```
+
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+library(ggplot2)
+model <- utf
+qplot(x=factor(model$term[1:10],levels=model$term[1:10],ordered=TRUE),y=model$freq[1:10],geom="bar",stat="identity") + stat_identity(geom="text",aes(label=model$freq[1:10]),vjust=-.25) + xlab("Word") + ylab("Frequency") + ggtitle("Comman Words") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#qplot(x=factor(model$term[1:10],levels=model$term[1:10],ordered=TRUE),y=model$freq[1:10],geom="pointrange",stat="identity",ymin=0,ymax=model$freq[1:10]) + stat_identity(geom="text",aes(label=model$freq[1:10]),vjust=-0.7,hjust=0.5) + xlab("Word") + ylab("Frequency") + ggtitle("Comman Words") + coord_flip() + geom_point(size=3)
+```
+
+### Wordcloud Depicting Word Frequencies
+
+```{r,echo=FALSE,message=FALSE}
+library(wordcloud)
+pal2 <- brewer.pal(8,"Dark2")
+wordcloud(model$term,model$freq,max.words=50,random.color=TRUE,colors=pal2,rot.per=.15,scale=c(8,.2),random.order=FALSE)
+```
+
+### Frequency Of 2-Grams : Most Frequent Bi-Grams in the Dataset Sample
+
+```{r,echo=FALSE}
+library(ggplot2)
+model <- btf
+qplot(x=factor(model$term[1:10],levels=model$term[1:10],ordered=TRUE),y=model$freq[1:10],geom="bar",stat="identity") + stat_identity(geom="text",aes(label=model$freq[1:10]),vjust=-.5) + xlab("Bi-Gram") + ylab("Frequency") + ggtitle("Comman Bi-Grams") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Wordcloud Depicting Most Frequent Bi-Grams
+
+```{r,echo=FALSE,message=FALSE}
+library(wordcloud)
+wordcloud(model$term,model$freq,max.words=50,random.color=TRUE,colors=pal2,rot.per=.15,scale=c(6,.2),random.order=FALSE)
+```
+
+### Frequency Of 3-Grams : Most Frequent Tri-Grams in the Dataset Sample
+
+```{r,echo=FALSE,message=FALSE}
+library(ggplot2)
+model <- ttf
+qplot(x=factor(model$term[1:10],levels=model$term[1:10],ordered=TRUE),y=model$freq[1:10],geom="bar",stat="identity") + stat_identity(geom="text",aes(label=model$freq[1:10]),vjust=-.5) + xlab("Word") + ylab("Frequency") + ggtitle("Comman Words") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Wordcloud Depicting Most Frequent Tri-Grams
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+library(wordcloud)
+pal2 <- brewer.pal(8,"Dark2")
+wordcloud(model$term,model$freq,max.words=50,random.color=TRUE,colors=pal2,rot.per=.15,scale=c(6,.2),random.order=FALSE)
+```
+
+### Plotting Percent Coverage
+
+This graph depicts relationship between number of unique words and percent coverage of all word instances in the dataset.
+
+From this graph, the trade-off between dataset size and percent coverage can be analyzed.
+
+```{r,echo=FALSE}
+library(ggplot2)
+pcts <- cumsum(utf$freq)/sum(utf$freq)
+breakpcts <- seq(0.1,0.9,0.1)
+val <- numeric()
+for (k in 1:length(breakpcts))
+{
+     for (i in 1:length(pcts)) if (pcts[i]>breakpcts[k]) break;
+     val[k] <- i
+     k <- k+1
+}
+breakpts <- c(10,20,30,40,50,60,70,80,90)
+qplot(y=val,x=breakpts,geom=c("line","point")) + geom_point(size=3) + scale_x_discrete(name="Percentage Coverage",c(10,20,30,40,50,60,70,80,90),labels=c(10,20,30,40,50,60,70,80,90)) + ylab("No. Of Unique Words Required") + ggtitle("") + geom_text(aes(label=val), hjust=1.3, vjust=-0.2)
+```
+
+From the graph, it can be clearly seen that the **No. Of Unique Words Required** increases **Exponentially** with increase in **Percent Coverage**.
+
+## Plans For Final Project
+
+Questions and bottlenecks to consider:
+
+### 1. Sample Dataset Size
+
+<1% of the dataset has been taken in this sample. There is a chance that much of the language has been discounted from this sample. A different sample set with same size and a sample set with ~10% of the dataset has to be taken to evaluate performance improvement vs speed decrease.
+
+### 2. Language Modelling
+
+* Word frequencies, 2-Gram, 3-Gram frequencies have been calculated. These have to be used to calculate Probabilities for the n-grams. 
+
+* Given a string W1.....Wi-1, the word Wi that maximizes P(Wi | Wn-i+1...Wi-1) has to be chosen as the prediction where n is the maximum n-gram.
+
+### 3. Back-off Models
+
+* The above probability calculation suffers when new phrases not present in the language are introduced.
+
+* Possible Solutions to be considered:
+     1. Katz Back-Off Models
+     2. Interpolated Models
+     3. Kneser-Ney Models
+     
+```{r}
+utf <- utf[1:8000,]
+btf <- btf[which(btf$X1 %in% utf$term),]
+ttf <- ttf[which(ttf$X1 %in% btf$X1 & ttf$X2 %in% btf$X2),]
+qtf <- qtf[which(qtf$X1 %in% ttf$X1 & qtf$X2 %in% qtf$X2 & qtf$X3 %in% ttf$X3),]
+```
+### 4. Overall Run-Time
+
+* After calculating n-gram probabilities along with Back-off Models, Observing runtime for different sample sizes for efficient memory usage and run-time
+
+DT[,.(V4.Sum = sum(V4)),by=V1] 
