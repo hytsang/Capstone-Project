@@ -1,7 +1,7 @@
 Swiftkey Data Science Capstone Project
 ========================================================
 author: Rithesh Kumar
-date: Sat Apr 18 13:56:56 2015
+date: Sat Apr 18 14:25:38 2015
 transition: concave
 
 Introduction
@@ -17,7 +17,7 @@ Introduction
 
 - Application link : [Shiny App - Next Word Prediction](https://ritheshkumar95.shinyapps.io/NextWordPrediction)
 
-- Github Link : [Codes]()
+- Github Link : [Codes](https://github.com/ritheshkumar95/Capstone-Project)
 
 </small>
 

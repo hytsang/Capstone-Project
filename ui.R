@@ -5,15 +5,15 @@ shinyUI(navbarPage("Data Science Captone Project",theme="bootstrap.css",tabPanel
      h5("Wait 10 Seconds For The App To Start"),
      textInput('inputText','Input : ',"What do you think "),
      hr(),
-     h5(HTML("<b>Output : </b>")),
+     h5(HTML("<b>Output : </b> (Top 3 Predictions)")),
      verbatimTextOutput("text"),
      hr()
 ),
 tabPanel("About", tags$div(HTML("
 <center><h1> Author </h1><br>
 <h4> Rithesh Kumar </h4>
-<h5> Github Link : </h5>
-<h5> Slide Deck Link : </h5></center>
+<h5> Github Link : <a href=https://github.com/ritheshkumar95/Capstone-Project> Codes </a> </h5>
+<h5> Slide Deck Link : <a href=http://rpubs.com/ritheshkumar95/73457> Codes </a></h5></center>
 <br>
 <h1><center> Methodology </center></h1>
 <ul>
